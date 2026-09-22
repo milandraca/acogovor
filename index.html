@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="sr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pogled govori — komunikacija pogledom</title>
+<script src="https://cdn.jsdelivr.net/gh/jspsych/jspsych@jspsych@7.0.0/examples/js/webgazer/webgazer.js"></script>
+<style>
+  :root {
+    --ink: #1c2b2b;
+    --ink-soft: #4a5d5d;
+    --paper: #f6f4ee;
+    --panel: #ffffff;
+    --accent: #2f6b5e;
+    --accent-soft: #dce9e3;
+    --warn: #b5502f;
+    --ring: #2f6b5e;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ink: #eef2f0;
+      --ink-soft: #a9bcb8;
+      --paper: #131c1a;
+      --panel: #1c2926;
+      --accent: #7fc9b3;
+      --accent-soft: #24413a;
+      --warn: #e08a63;
+      --ring: #7fc9b3;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ink: #eef2f0;
+    --ink-soft: #a9bcb8;
+    --paper: #131c1a;
+    --panel: #1c2926;
+    --accent: #7fc9b3;
+    --accent-soft: #24413a;
+    --warn: #e08a63;
+    --ring: #7fc9b3;
+  }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  * { box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Iowan Old Style", "Palatino Linotype", Georgia, "Noto Serif", serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+  }
+  header {
+    padding: 18px 20px 10px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  h1 {
+    font-size: 1.25rem;
+    margin: 0;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+  .sub {
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+    margin: 2px 0 0;
+  }
+  .toolbar {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  button.tool {
+    font-family: inherit;
+    font-size: 0.85rem;
+    background: var(--panel);
+    color: var(--ink);
+    border: 1px solid var(--accent-soft);
+    border-radius: 8px;
+    padding: 8px 12px;
+    cursor: pointer;
+  }
+  button.tool:hover { background: var(--accent-soft); }
+
+  main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 0 16px 16px;
+    gap: 14px;
+    max-width: 900px;
+    width: 100%;
+    margin: 0 auto;
+  }
+
+  #status {
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+    min-height: 1.2em;
+  }
+  #status.error {
+    font-size: 0.95rem;
+    color: var(--paper);
+    background: var(--warn);
+    padding: 12px 14px;
+    border-radius: 10px;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+  #debugLog {
+    font-size: 0.7rem;
+    color: var(--ink-soft);
+    background: var(--panel);
+    border: 1px solid var(--accent-soft);
+    border-radius: 8px;
+    padding: 8px 10px;
+    max-height: 90px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    font-family: ui-monospace, Menlo, monospace;
+    display: none;
+  }
+
+  #stage {
+    position: relative;
+    flex: 1;
+    min-height: 60vh;
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--accent-soft);
+    border-radius: 14px;
+    padding: 20px;
+  }
+
+  /* --- Setup panel --- */
+  #setup ol { padding-left: 1.2em; line-height: 1.6; }
+  #setup .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+  button.primary {
+    font-family: inherit;
+    font-size: 1rem;
+    background: var(--accent);
+    color: var(--paper);
+    border: none;
+    border-radius: 10px;
+    padding: 12px 20px;
+    cursor: pointer;
+  }
+  button.primary:disabled { opacity: 0.5; cursor: default; }
+  button.secondary {
+    font-family: inherit;
+    font-size: 1rem;
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 10px;
+    padding: 12px 20px;
+    cursor: pointer;
+  }
+
+  /* --- Calibration --- */
+  #calibration { position: absolute; inset: 0; display: none; }
+  .cal-dot {
+    position: absolute;
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    background: var(--warn);
+    border: 3px solid var(--paper);
+    transform: translate(-50%, -50%);
+    cursor: pointer;
+    box-shadow: 0 0 0 4px var(--accent-soft);
+  }
+  .cal-dot.done { background: var(--accent); }
+  #calInfo {
+    position: absolute;
+    top: 10px; left: 50%; transform: translateX(-50%);
+    font-size: 0.9rem;
+    color: var(--ink-soft);
+    background: var(--panel);
+    padding: 6px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--accent-soft);
+  }
+
+  /* --- Board --- */
+  #board { display: none; height: 100%; flex-direction: column; gap: 10px; }
+  #outputBar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--panel);
+    border: 1px solid var(--accent-soft);
+    border-radius: 12px;
+    padding: 12px 16px;
+    min-height: 3.2em;
+  }
+  #outputText {
+    flex: 1;
+    font-size: 1.3rem;
+    min-height: 1.4em;
+  }
+  #grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-auto-rows: 1fr;
+    gap: 10px;
+  }
+  @media (max-width: 560px) {
+    #grid { grid-template-columns: repeat(3, 1fr); }
+  }
+  .cell {
+    position: relative;
+    background: var(--panel);
+    border: 2px solid var(--accent-soft);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 6px;
+    font-size: 1.05rem;
+    overflow: hidden;
+    user-select: none;
+  }
+  .cell.nav { background: var(--accent-soft); font-weight: 600; }
+  .cell .fill {
+    position: absolute;
+    left: 0; bottom: 0; right: 0;
+    height: 0%;
+    background: var(--ring);
+    opacity: 0.28;
+    transition: height 60ms linear;
+    pointer-events: none;
+  }
+  .cell.selected {
+    border-color: var(--ring);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .cell .label { position: relative; z-index: 1; }
+
+  #gazeDot {
+    position: fixed;
+    width: 18px; height: 18px;
+    margin-left: -9px; margin-top: -9px;
+    border-radius: 50%;
+    background: var(--warn);
+    opacity: 0.7;
+    pointer-events: none;
+    z-index: 9999;
+    display: none;
+    transition: left 40ms linear, top 40ms linear;
+  }
+
+  footer {
+    padding: 8px 20px 14px;
+    font-size: 0.75rem;
+    color: var(--ink-soft);
+    text-align: center;
+  }
+
+  #camPreview {
+    position: fixed;
+    bottom: 10px;
+    right: 10px;
+    width: 90px;
+    border-radius: 10px;
+    overflow: hidden;
+    opacity: 0.85;
+    border: 1px solid var(--accent-soft);
+    z-index: 50;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Pogled govori</h1>
+    <p class="sub">Prototip za komunikaciju praćenjem pogleda preko kamere</p>
+  </div>
+  <div class="toolbar">
+    <button class="tool" id="recalBtn" style="display:none;">Ponovo kalibriši</button>
+    <button class="tool" id="dwellDown">Sporije</button>
+    <button class="tool" id="dwellUp">Brže</button>
+  </div>
+</header>
+
+<main>
+  <div id="status">Priprema...</div>
+  <div id="debugLog"></div>
+
+  <div id="stage">
+    <div id="setup" class="panel">
+      <p><strong>Kako radi:</strong> kamera prati kuda gledaš. Kad zadržiš pogled na jednoj reči nekoliko sekundi, reč se bira i telefon/tablet je izgovara naglas.</p>
+      <ol>
+        <li>Klikni „Uključi kameru" i dozvoli pristup kameri.</li>
+        <li>Sedi udobno, licem okrenut ka kameri, sa stabilnim osvetljenjem.</li>
+        <li>Prođi kroz kratku kalibraciju od 9 tačaka (neko treba da klikne na svaku tačku dok osoba gleda u nju — ili osoba sama, ako može da koristi miš/dodir).</li>
+        <li>Zatim se otvara tabla sa rečima za komunikaciju.</li>
+      </ol>
+      <p style="color:var(--ink-soft); font-size:0.85rem;">Ovo je jednostavan prototip za probu ideje — tačnost zavisi od kamere, osvetljenja i kalibracije. Nije zamena za medicinski eye-tracker, ali može poslužiti dok se ne obezbedi specijalizovana oprema.</p>
+      <div class="row">
+        <button class="primary" id="startCam">Uključi kameru</button>
+      </div>
+    </div>
+
+    <div id="calibration">
+      <div id="calInfo">Klikni (ili dodirni) svaku tačku dok osoba gleda pravo u nju</div>
+    </div>
+
+    <div id="board">
+      <div id="outputBar">
+        <div id="outputText"></div>
+        <button class="tool" id="speakBtn">🔊 Izgovori</button>
+        <button class="tool" id="clearBtn">Obriši</button>
+      </div>
+      <div id="grid"></div>
+    </div>
+  </div>
+</main>
+
+<footer>Podaci sa kamere ostaju u ovom browseru — ništa se ne šalje na internet.</footer>
+
+<div id="gazeDot"></div>
+<video id="camPreview" style="display:none;"></video>
+
+<script>
+(function () {
+  "use strict";
+
+  var DWELL_MS = 1400;
+  var statusEl = document.getElementById('status');
+  var debugEl = document.getElementById('debugLog');
+  var setupEl = document.getElementById('setup');
+  var calEl = document.getElementById('calibration');
+  var boardEl = document.getElementById('board');
+  var gridEl = document.getElementById('grid');
+  var outputText = document.getElementById('outputText');
+  var gazeDot = document.getElementById('gazeDot');
+  var recalBtn = document.getElementById('recalBtn');
+
+  function setStatus(msg, isError) {
+    statusEl.textContent = msg;
+    statusEl.className = isError ? 'error' : '';
+  }
+  function log(msg) {
+    debugEl.style.display = 'block';
+    debugEl.textContent += msg + '\n';
+    debugEl.scrollTop = debugEl.scrollHeight;
+  }
+  window.addEventListener('error', function (e) {
+    log('Greška u skripti: ' + e.message);
+    setStatus('Došlo je do greške u stranici (videti dnevnik ispod). Pošalji screenshot.', true);
+  });
+
+  // ---------- Word board data ----------
+  var HOME = [
+    {t: 'DA', type: 'word'},
+    {t: 'NE', type: 'word'},
+    {t: 'BOL', type: 'word'},
+    {t: 'POMOĆ', type: 'word'},
+    {t: 'ŽEDAN/ŽEDNA SAM', type: 'word'},
+    {t: 'GLADAN/GLADNA SAM', type: 'word'},
+    {t: 'UMORAN/UMORNA SAM', type: 'word'},
+    {t: 'PREVIŠE TOPLO', type: 'word'},
+    {t: 'PREVIŠE HLADNO', type: 'word'},
+    {t: 'NAMESTI ME', type: 'word'},
+    {t: 'SVRAB', type: 'word'},
+    {t: 'NE MOGU DA DIŠEM', type: 'word'},
+    {t: 'VOLIM TE', type: 'word'},
+    {t: 'HVALA', type: 'word'},
+    {t: 'SAČEKAJ', type: 'word'},
+    {t: 'SLOVA', type: 'letters'}
+  ];
+  var LETTERS = 'ABCČĆDĐEFGHIJKLMNOPRSŠTUVZŽ'.split('');
+
+  var currentView = 'home';
+
+  function buildHome() {
+    currentView = 'home';
+    recalBtn.style.display = 'inline-block';
+    gridEl.innerHTML = '';
+    HOME.forEach(function (item) {
+      gridEl.appendChild(makeCell(item.t, function () {
+        if (item.type === 'letters') {
+          buildLetters();
+        } else {
+          appendWord(item.t);
+        }
+      }));
+    });
+  }
+
+  function buildLetters() {
+    currentView = 'letters';
+    gridEl.innerHTML = '';
+    gridEl.appendChild(makeCell('← NAZAD', function () { buildHome(); }, true));
+    gridEl.appendChild(makeCell('RAZMAK', function () { appendChar(' '); }, true));
+    gridEl.appendChild(makeCell('OBRIŠI', function () { backspace(); }, true));
+    LETTERS.forEach(function (ch) {
+      gridEl.appendChild(makeCell(ch, function () { appendChar(ch); }));
+    });
+  }
+
+  function appendWord(w) {
+    outputText.textContent = (outputText.textContent ? outputText.textContent + ' ' : '') + w;
+    speak(w);
+  }
+  function appendChar(ch) {
+    outputText.textContent += ch;
+  }
+  function backspace() {
+    outputText.textContent = outputText.textContent.slice(0, -1);
+  }
+  function speak(text) {
+    if (!('speechSynthesis' in window)) return;
+    var u = new SpeechSynthesisUtterance(text);
+    u.lang = 'sr-RS';
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(u);
+  }
+
+  document.getElementById('speakBtn').addEventListener('click', function () {
+    if (outputText.textContent) speak(outputText.textContent);
+  });
+  document.getElementById('clearBtn').addEventListener('click', function () {
+    outputText.textContent = '';
+  });
+
+  // ---------- Cell + dwell selection ----------
+  function makeCell(label, onSelect, isNav) {
+    var cell = document.createElement('div');
+    cell.className = 'cell' + (isNav ? ' nav' : '');
+    var fill = document.createElement('div');
+    fill.className = 'fill';
+    var span = document.createElement('div');
+    span.className = 'label';
+    span.textContent = label;
+    cell.appendChild(fill);
+    cell.appendChild(span);
+
+    cell._fill = fill;
+    cell._onSelect = onSelect;
+
+    // Allow manual click/tap too (for calibration-assist / fallback use)
+    cell.addEventListener('click', function () {
+      triggerSelect(cell);
+    });
+
+    return cell;
+  }
+
+  var dwellTimer = null;
+  var dwellStart = 0;
+  var dwellCell = null;
+  var dwellRaf = null;
+
+  function clearDwell() {
+    if (dwellCell) {
+      dwellCell.classList.remove('selected');
+      dwellCell._fill.style.height = '0%';
+    }
+    dwellCell = null;
+    dwellStart = 0;
+    if (dwellRaf) cancelAnimationFrame(dwellRaf);
+    dwellRaf = null;
+  }
+
+  function updateDwell(cell) {
+    if (cell !== dwellCell) {
+      clearDwell();
+      dwellCell = cell;
+      dwellStart = performance.now();
+      cell.classList.add('selected');
+    }
+    var elapsed = performance.now() - dwellStart;
+    var pct = Math.min(100, (elapsed / DWELL_MS) * 100);
+    cell._fill.style.height = pct + '%';
+    if (elapsed >= DWELL_MS) {
+      var c = cell;
+      clearDwell();
+      triggerSelect(c);
+    } else {
+      dwellRaf = requestAnimationFrame(function () { updateDwell(cell); });
+    }
+  }
+
+  function triggerSelect(cell) {
+    clearDwell();
+    if (navigator.vibrate) navigator.vibrate(30);
+    cell._onSelect();
+  }
+
+  function cellAtPoint(x, y) {
+    var el = document.elementFromPoint(x, y);
+    while (el && !el.classList.contains('cell')) el = el.parentElement;
+    return el;
+  }
+
+  // ---------- Speed controls ----------
+  document.getElementById('dwellUp').addEventListener('click', function () {
+    DWELL_MS = Math.max(500, DWELL_MS - 200);
+    setStatus('Vreme zadržavanja: ' + (DWELL_MS / 1000).toFixed(1) + ' s');
+  });
+  document.getElementById('dwellDown').addEventListener('click', function () {
+    DWELL_MS = Math.min(4000, DWELL_MS + 200);
+    setStatus('Vreme zadržavanja: ' + (DWELL_MS / 1000).toFixed(1) + ' s');
+  });
+
+  // ---------- WebGazer setup ----------
+  var camReady = false;
+  var calibrated = false;
+  var calDots = [];
+  var calDoneCount = 0;
+
+  document.getElementById('startCam').addEventListener('click', function () {
+    setStatus('Tražim pristup kameri...');
+    log('Klik na "Uključi kameru".');
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setStatus('Ovaj browser/stranica ne dozvoljava pristup kameri ovde. Probaj da otvoriš link u Chrome ili Safari browseru direktno (ne unutar druge aplikacije), ili proveri da je stranica učitana preko https.', true);
+      log('navigator.mediaDevices.getUserMedia nije dostupan.');
+      return;
+    }
+
+    // Test camera access directly first, so we get a precise, real error.
+    navigator.mediaDevices.getUserMedia({ video: true })
+      .then(function (stream) {
+        log('Kamera je dostupna, pristup odobren.');
+        // stop this test stream; webgazer will open its own.
+        stream.getTracks().forEach(function (t) { t.stop(); });
+        startWebgazer();
+      })
+      .catch(function (err) {
+        var name = err && err.name ? err.name : 'Unknown';
+        log('getUserMedia greška: ' + name + ' — ' + (err && err.message));
+        var msg;
+        if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+          msg = 'Pristup kameri je odbijen. Proveri podešavanja sajta u browseru (ikonica katanca pored adrese) i dozvoli kameru, pa osveži stranicu.';
+        } else if (name === 'NotFoundError') {
+          msg = 'Nije pronađena kamera na ovom uređaju.';
+        } else if (name === 'NotReadableError') {
+          msg = 'Kamera je zauzeta — možda je koristi neka druga aplikacija. Zatvori druge aplikacije koje koriste kameru i pokušaj ponovo.';
+        } else if (name === 'SecurityError') {
+          msg = 'Ova stranica (unutar Claude aplikacije) ne dozvoljava pristup kameri. Pokušaj da otvoriš link direktno u Chrome ili Safari browseru (kopiraj link i nalepi ga u novi tab), umesto unutar Claude prozora.';
+        } else {
+          msg = 'Kamera nije dostupna (' + name + '). Pokušaj da otvoriš link direktno u Chrome ili Safari browseru.';
+        }
+        setStatus(msg, true);
+      });
+  });
+
+  function startWebgazer() {
+    setStatus('Pokrećem praćenje pogleda...');
+    if (typeof webgazer === 'undefined') {
+      setStatus('Nije uspelo učitavanje biblioteke za praćenje pogleda (verovatno slaba internet konekcija). Osveži stranicu i pokušaj ponovo.', true);
+      log('window.webgazer je undefined nakon učitavanja skripte.');
+      return;
+    }
+    webgazer.setRegression('ridge')
+      .setTracker('TFFacemesh')
+      .setGazeListener(onGaze)
+      .saveDataAcrossSessions(false)
+      .begin()
+      .then(function () {
+        camReady = true;
+        webgazer.showVideoPreview(false).showPredictionPoints(false).showFaceOverlay(false).showFaceFeedbackBox(false);
+        setupEl.style.display = 'none';
+        startCalibration();
+      })
+      .catch(function (err) {
+        log('webgazer.begin() greška: ' + (err && err.message));
+        setStatus('Praćenje pogleda nije uspelo da se pokrene: ' + (err && err.message ? err.message : 'nepoznata greška.'), true);
+      });
+  }
+
+  function onGaze(data) {
+    if (!data) return;
+    gazeDot.style.left = data.x + 'px';
+    gazeDot.style.top = data.y + 'px';
+    if (calibrated) {
+      var cell = cellAtPoint(data.x, data.y);
+      if (cell) {
+        updateDwell(cell);
+      } else {
+        clearDwell();
+      }
+    }
+  }
+
+  function startCalibration() {
+    calEl.style.display = 'block';
+    gazeDot.style.display = 'block';
+    setStatus('Kalibracija: klikni na svaku tačku dok osoba gleda pravo u nju.');
+    calDots = [];
+    calDoneCount = 0;
+    var margins = [0.08, 0.5, 0.92];
+    margins.forEach(function (fy) {
+      margins.forEach(function (fx) {
+        var dot = document.createElement('div');
+        dot.className = 'cal-dot';
+        dot.style.left = (fx * 100) + 'vw';
+        dot.style.top = (fy * 100) + 'vh';
+        dot.addEventListener('click', function () {
+          if (dot.classList.contains('done')) return;
+          dot.classList.add('done');
+          calDoneCount++;
+          if (calDoneCount >= calDots.length) finishCalibration();
+        });
+        calEl.appendChild(dot);
+        calDots.push(dot);
+      });
+    });
+  }
+
+  function finishCalibration() {
+    calibrated = true;
+    calEl.style.display = 'none';
+    calEl.innerHTML = '';
+    calEl.appendChild(document.getElementById('calInfo'));
+    boardEl.style.display = 'flex';
+    setStatus('Spremno. Gledaj u reč nekoliko sekundi da je izabereš.');
+    buildHome();
+  }
+
+  recalBtn.addEventListener('click', function () {
+    boardEl.style.display = 'none';
+    startCalibration();
+  });
+
+  // Also allow using the board with mouse/touch only (no camera), for testing
+  setStatus('Spremno za pokretanje.');
+})();
+</script>
+</body>
+</html>
