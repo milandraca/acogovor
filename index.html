@@ -91,7 +91,7 @@
     cursor: pointer;
   }
   button.tool:hover { background: var(--accent-soft); }
-
+ 
   main {
     flex: 1;
     display: flex;
@@ -102,7 +102,7 @@
     width: 100%;
     margin: 0 auto;
   }
-
+ 
   #status {
     font-size: 0.85rem;
     color: var(--ink-soft);
@@ -130,20 +130,20 @@
     font-family: ui-monospace, Menlo, monospace;
     display: none;
   }
-
+ 
   #stage {
     position: relative;
     flex: 1;
     min-height: 60vh;
   }
-
+ 
   .panel {
     background: var(--panel);
     border: 1px solid var(--accent-soft);
     border-radius: 14px;
     padding: 20px;
   }
-
+ 
   /* --- Setup panel --- */
   #setup ol { padding-left: 1.2em; line-height: 1.6; }
   #setup .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
@@ -168,7 +168,7 @@
     padding: 12px 20px;
     cursor: pointer;
   }
-
+ 
   /* --- Calibration --- */
   #calibration { position: absolute; inset: 0; display: none; }
   .cal-dot {
@@ -192,7 +192,7 @@
     border-radius: 999px;
     border: 1px solid var(--accent-soft);
   }
-
+ 
   /* --- Board --- */
   #board { display: none; height: 100%; flex-direction: column; gap: 10px; }
   #outputBar {
@@ -249,7 +249,7 @@
     box-shadow: 0 0 0 3px var(--accent-soft);
   }
   .cell .label { position: relative; z-index: 1; }
-
+ 
   #gazeDot {
     position: fixed;
     width: 18px; height: 18px;
@@ -262,14 +262,14 @@
     display: none;
     transition: left 40ms linear, top 40ms linear;
   }
-
+ 
   footer {
     padding: 8px 20px 14px;
     font-size: 0.75rem;
     color: var(--ink-soft);
     text-align: center;
   }
-
+ 
   #camPreview {
     position: fixed;
     bottom: 10px;
@@ -284,7 +284,7 @@
 </style>
 </head>
 <body>
-
+ 
 <header>
   <div>
     <h1>Pogled govori</h1>
@@ -296,11 +296,11 @@
     <button class="tool" id="dwellUp">Brže</button>
   </div>
 </header>
-
+ 
 <main>
   <div id="status">Priprema...</div>
   <div id="debugLog"></div>
-
+ 
   <div id="stage">
     <div id="setup" class="panel">
       <p><strong>Kako radi:</strong> kamera prati kuda gledaš. Kad zadržiš pogled na jednoj reči nekoliko sekundi, reč se bira i telefon/tablet je izgovara naglas.</p>
@@ -315,11 +315,11 @@
         <button class="primary" id="startCam">Uključi kameru</button>
       </div>
     </div>
-
+ 
     <div id="calibration">
       <div id="calInfo">Klikni (ili dodirni) svaku tačku dok osoba gleda pravo u nju</div>
     </div>
-
+ 
     <div id="board">
       <div id="outputBar">
         <div id="outputText"></div>
@@ -330,16 +330,16 @@
     </div>
   </div>
 </main>
-
+ 
 <footer>Podaci sa kamere ostaju u ovom browseru — ništa se ne šalje na internet.</footer>
-
+ 
 <div id="gazeDot"></div>
 <video id="camPreview" style="display:none;"></video>
-
+ 
 <script>
 (function () {
   "use strict";
-
+ 
   var DWELL_MS = 1400;
   var statusEl = document.getElementById('status');
   var debugEl = document.getElementById('debugLog');
@@ -350,7 +350,7 @@
   var outputText = document.getElementById('outputText');
   var gazeDot = document.getElementById('gazeDot');
   var recalBtn = document.getElementById('recalBtn');
-
+ 
   function setStatus(msg, isError) {
     statusEl.textContent = msg;
     statusEl.className = isError ? 'error' : '';
@@ -364,7 +364,7 @@
     log('Greška u skripti: ' + e.message);
     setStatus('Došlo je do greške u stranici (videti dnevnik ispod). Pošalji screenshot.', true);
   });
-
+ 
   // ---------- Word board data ----------
   var HOME = [
     {t: 'DA', type: 'word'},
@@ -385,9 +385,9 @@
     {t: 'SLOVA', type: 'letters'}
   ];
   var LETTERS = 'ABCČĆDĐEFGHIJKLMNOPRSŠTUVZŽ'.split('');
-
+ 
   var currentView = 'home';
-
+ 
   function buildHome() {
     currentView = 'home';
     recalBtn.style.display = 'inline-block';
@@ -402,7 +402,7 @@
       }));
     });
   }
-
+ 
   function buildLetters() {
     currentView = 'letters';
     gridEl.innerHTML = '';
@@ -413,7 +413,7 @@
       gridEl.appendChild(makeCell(ch, function () { appendChar(ch); }));
     });
   }
-
+ 
   function appendWord(w) {
     outputText.textContent = (outputText.textContent ? outputText.textContent + ' ' : '') + w;
     speak(w);
@@ -431,14 +431,14 @@
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(u);
   }
-
+ 
   document.getElementById('speakBtn').addEventListener('click', function () {
     if (outputText.textContent) speak(outputText.textContent);
   });
   document.getElementById('clearBtn').addEventListener('click', function () {
     outputText.textContent = '';
   });
-
+ 
   // ---------- Cell + dwell selection ----------
   function makeCell(label, onSelect, isNav) {
     var cell = document.createElement('div');
@@ -450,23 +450,23 @@
     span.textContent = label;
     cell.appendChild(fill);
     cell.appendChild(span);
-
+ 
     cell._fill = fill;
     cell._onSelect = onSelect;
-
+ 
     // Allow manual click/tap too (for calibration-assist / fallback use)
     cell.addEventListener('click', function () {
       triggerSelect(cell);
     });
-
+ 
     return cell;
   }
-
+ 
   var dwellTimer = null;
   var dwellStart = 0;
   var dwellCell = null;
   var dwellRaf = null;
-
+ 
   function clearDwell() {
     if (dwellCell) {
       dwellCell.classList.remove('selected');
@@ -477,7 +477,7 @@
     if (dwellRaf) cancelAnimationFrame(dwellRaf);
     dwellRaf = null;
   }
-
+ 
   function updateDwell(cell) {
     if (cell !== dwellCell) {
       clearDwell();
@@ -496,19 +496,19 @@
       dwellRaf = requestAnimationFrame(function () { updateDwell(cell); });
     }
   }
-
+ 
   function triggerSelect(cell) {
     clearDwell();
     if (navigator.vibrate) navigator.vibrate(30);
     cell._onSelect();
   }
-
+ 
   function cellAtPoint(x, y) {
     var el = document.elementFromPoint(x, y);
     while (el && !el.classList.contains('cell')) el = el.parentElement;
     return el;
   }
-
+ 
   // ---------- Speed controls ----------
   document.getElementById('dwellUp').addEventListener('click', function () {
     DWELL_MS = Math.max(500, DWELL_MS - 200);
@@ -518,23 +518,23 @@
     DWELL_MS = Math.min(4000, DWELL_MS + 200);
     setStatus('Vreme zadržavanja: ' + (DWELL_MS / 1000).toFixed(1) + ' s');
   });
-
+ 
   // ---------- WebGazer setup ----------
   var camReady = false;
   var calibrated = false;
   var calDots = [];
   var calDoneCount = 0;
-
+ 
   document.getElementById('startCam').addEventListener('click', function () {
     setStatus('Tražim pristup kameri...');
     log('Klik na "Uključi kameru".');
-
+ 
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setStatus('Ovaj browser/stranica ne dozvoljava pristup kameri ovde. Probaj da otvoriš link u Chrome ili Safari browseru direktno (ne unutar druge aplikacije), ili proveri da je stranica učitana preko https.', true);
       log('navigator.mediaDevices.getUserMedia nije dostupan.');
       return;
     }
-
+ 
     // Test camera access directly first, so we get a precise, real error.
     navigator.mediaDevices.getUserMedia({ video: true })
       .then(function (stream) {
@@ -561,7 +561,7 @@
         setStatus(msg, true);
       });
   });
-
+ 
   function startWebgazer() {
     setStatus('Pokrećem praćenje pogleda...');
     if (typeof webgazer === 'undefined') {
@@ -569,14 +569,19 @@
       log('window.webgazer je undefined nakon učitavanja skripte.');
       return;
     }
-    webgazer.setRegression('ridge')
+    var wg = webgazer.setRegression('ridge')
       .setTracker('TFFacemesh')
-      .setGazeListener(onGaze)
-      .saveDataAcrossSessions(false)
-      .begin()
+      .setGazeListener(onGaze);
+    if (typeof wg.saveDataAcrossSessions === 'function') {
+      wg = wg.saveDataAcrossSessions(false);
+    }
+    wg.begin()
       .then(function () {
         camReady = true;
-        webgazer.showVideoPreview(false).showPredictionPoints(false).showFaceOverlay(false).showFaceFeedbackBox(false);
+        if (webgazer.showVideoPreview) webgazer.showVideoPreview(false);
+        if (webgazer.showPredictionPoints) webgazer.showPredictionPoints(false);
+        if (webgazer.showFaceOverlay) webgazer.showFaceOverlay(false);
+        if (webgazer.showFaceFeedbackBox) webgazer.showFaceFeedbackBox(false);
         setupEl.style.display = 'none';
         startCalibration();
       })
@@ -585,7 +590,7 @@
         setStatus('Praćenje pogleda nije uspelo da se pokrene: ' + (err && err.message ? err.message : 'nepoznata greška.'), true);
       });
   }
-
+ 
   function onGaze(data) {
     if (!data) return;
     gazeDot.style.left = data.x + 'px';
@@ -599,7 +604,7 @@
       }
     }
   }
-
+ 
   function startCalibration() {
     calEl.style.display = 'block';
     gazeDot.style.display = 'block';
@@ -624,7 +629,7 @@
       });
     });
   }
-
+ 
   function finishCalibration() {
     calibrated = true;
     calEl.style.display = 'none';
@@ -634,12 +639,12 @@
     setStatus('Spremno. Gledaj u reč nekoliko sekundi da je izabereš.');
     buildHome();
   }
-
+ 
   recalBtn.addEventListener('click', function () {
     boardEl.style.display = 'none';
     startCalibration();
   });
-
+ 
   // Also allow using the board with mouse/touch only (no camera), for testing
   setStatus('Spremno za pokretanje.');
 })();
