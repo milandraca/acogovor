@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Pogled govori — komunikacija pogledom</title>
-<script src="https://cdn.jsdelivr.net/gh/jspsych/jspsych@jspsych@7.0.0/examples/js/webgazer/webgazer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
 <style>
   :root {
     --ink: #1c2b2b;
@@ -519,84 +519,152 @@
     setStatus('Vreme zadržavanja: ' + (DWELL_MS / 1000).toFixed(1) + ' s');
   });
  
-  // ---------- WebGazer setup ----------
+  // ---------- Face Mesh (MediaPipe) gaze tracking ----------
   var camReady = false;
   var calibrated = false;
   var calDots = [];
   var calDoneCount = 0;
+  var calSamples = [];
+  var currentFeature = null;
+  var regX = null;
+  var regY = null;
+  var videoEl = null;
+  var faceMesh = null;
  
   document.getElementById('startCam').addEventListener('click', function () {
     setStatus('Tražim pristup kameri...');
     log('Klik na "Uključi kameru".');
  
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setStatus('Ovaj browser/stranica ne dozvoljava pristup kameri ovde. Probaj da otvoriš link u Chrome ili Safari browseru direktno (ne unutar druge aplikacije), ili proveri da je stranica učitana preko https.', true);
+      setStatus('Ovaj browser/stranica ne dozvoljava pristup kameri ovde. Probaj da otvoriš link u Chrome ili Safari browseru direktno.', true);
       log('navigator.mediaDevices.getUserMedia nije dostupan.');
       return;
     }
  
-    // Test camera access directly first, so we get a precise, real error.
-    navigator.mediaDevices.getUserMedia({ video: true })
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
       .then(function (stream) {
         log('Kamera je dostupna, pristup odobren.');
-        // stop this test stream; webgazer will open its own.
-        stream.getTracks().forEach(function (t) { t.stop(); });
-        startWebgazer();
+        videoEl = document.createElement('video');
+        videoEl.setAttribute('playsinline', '');
+        videoEl.setAttribute('autoplay', '');
+        videoEl.muted = true;
+        videoEl.style.display = 'none';
+        document.body.appendChild(videoEl);
+        videoEl.srcObject = stream;
+        return videoEl.play();
+      })
+      .then(function () {
+        startFaceMesh();
       })
       .catch(function (err) {
         var name = err && err.name ? err.name : 'Unknown';
-        log('getUserMedia greška: ' + name + ' — ' + (err && err.message));
+        log('Greška kamere: ' + name + ' — ' + (err && err.message));
         var msg;
         if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
-          msg = 'Pristup kameri je odbijen. Proveri podešavanja sajta u browseru (ikonica katanca pored adrese) i dozvoli kameru, pa osveži stranicu.';
+          msg = 'Pristup kameri je odbijen. Proveri podešavanja sajta u browseru i dozvoli kameru, pa osveži stranicu.';
         } else if (name === 'NotFoundError') {
           msg = 'Nije pronađena kamera na ovom uređaju.';
         } else if (name === 'NotReadableError') {
-          msg = 'Kamera je zauzeta — možda je koristi neka druga aplikacija. Zatvori druge aplikacije koje koriste kameru i pokušaj ponovo.';
+          msg = 'Kamera je zauzeta — zatvori druge aplikacije koje je koriste i pokušaj ponovo.';
         } else if (name === 'SecurityError') {
-          msg = 'Ova stranica (unutar Claude aplikacije) ne dozvoljava pristup kameri. Pokušaj da otvoriš link direktno u Chrome ili Safari browseru (kopiraj link i nalepi ga u novi tab), umesto unutar Claude prozora.';
+          msg = 'Ova stranica ne dozvoljava pristup kameri ovde. Pokušaj da otvoriš link direktno u Chrome ili Safari browseru.';
         } else {
-          msg = 'Kamera nije dostupna (' + name + '). Pokušaj da otvoriš link direktno u Chrome ili Safari browseru.';
+          msg = 'Kamera nije dostupna (' + name + '): ' + (err && err.message ? err.message : '');
         }
         setStatus(msg, true);
       });
   });
  
-  function startWebgazer() {
-    setStatus('Pokrećem praćenje pogleda...');
-    if (typeof webgazer === 'undefined') {
-      setStatus('Nije uspelo učitavanje biblioteke za praćenje pogleda (verovatno slaba internet konekcija). Osveži stranicu i pokušaj ponovo.', true);
-      log('window.webgazer je undefined nakon učitavanja skripte.');
+  function startFaceMesh() {
+    setStatus('Učitavam model za prepoznavanje lica...');
+    if (typeof FaceMesh === 'undefined') {
+      setStatus('Nije uspelo učitavanje biblioteke za prepoznavanje lica (proveri internet konekciju) i osveži stranicu.', true);
+      log('window.FaceMesh je undefined.');
       return;
     }
-    var wg = webgazer.setRegression('ridge')
-      .setTracker('TFFacemesh')
-      .setGazeListener(onGaze);
-    if (typeof wg.saveDataAcrossSessions === 'function') {
-      wg = wg.saveDataAcrossSessions(false);
-    }
-    wg.begin()
-      .then(function () {
-        camReady = true;
-        if (webgazer.showVideoPreview) webgazer.showVideoPreview(false);
-        if (webgazer.showPredictionPoints) webgazer.showPredictionPoints(false);
-        if (webgazer.showFaceOverlay) webgazer.showFaceOverlay(false);
-        if (webgazer.showFaceFeedbackBox) webgazer.showFaceFeedbackBox(false);
-        setupEl.style.display = 'none';
-        startCalibration();
-      })
-      .catch(function (err) {
-        log('webgazer.begin() greška: ' + (err && err.message));
-        setStatus('Praćenje pogleda nije uspelo da se pokrene: ' + (err && err.message ? err.message : 'nepoznata greška.'), true);
+    try {
+      faceMesh = new FaceMesh({
+        locateFile: function (file) {
+          return 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/' + file;
+        }
       });
+      faceMesh.setOptions({
+        maxNumFaces: 1,
+        refineLandmarks: true,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+      });
+      faceMesh.onResults(onFaceResults);
+    } catch (e) {
+      log('Greška pri pokretanju FaceMesh: ' + e.message);
+      setStatus('Greška pri pokretanju prepoznavanja lica.', true);
+      return;
+    }
+    camReady = true;
+    setupEl.style.display = 'none';
+    gazeDot.style.display = 'block';
+    startCalibration();
+    frameLoop();
   }
  
-  function onGaze(data) {
-    if (!data) return;
-    gazeDot.style.left = data.x + 'px';
-    gazeDot.style.top = data.y + 'px';
-    if (calibrated) {
-      var cell = cellAtPoint(data.x, data.y);
+  var frameLoopRunning = false;
+  function frameLoop() {
+    if (frameLoopRunning) return;
+    frameLoopRunning = true;
+    function step() {
+      if (videoEl && videoEl.readyState >= 2) {
+        faceMesh.send({ image: videoEl }).catch(function (e) {
+          log('FaceMesh greška: ' + e.message);
+        });
+      }
+      requestAnimationFrame(step);
+    }
+    step();
+  }
+ 
+  function eyeRatio(lm, iris, inner, outer, upper, lower) {
+    var ix = lm[iris].x, iy = lm[iris].y;
+    var ax = lm[inner].x;
+    var bx = lm[outer].x;
+    var uy = lm[upper].y;
+    var dy = lm[lower].y;
+    var hSpan = bx - ax;
+    var vSpan = dy - uy;
+    return {
+      h: hSpan !== 0 ? (ix - ax) / hSpan : 0.5,
+      v: vSpan !== 0 ? (iy - uy) / vSpan : 0.5
+    };
+  }
+ 
+  function dotProd(a, b) {
+    var s = 0;
+    for (var i = 0; i < a.length; i++) s += a[i] * b[i];
+    return s;
+  }
+ 
+  function onFaceResults(results) {
+    if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
+      currentFeature = null;
+      return;
+    }
+    var lm = results.multiFaceLandmarks[0];
+    var e1 = eyeRatio(lm, 468, 133, 33, 159, 145);
+    var e2 = eyeRatio(lm, 473, 362, 263, 386, 374);
+    var h = (e1.h + e2.h) / 2;
+    var v = (e1.v + e2.v) / 2;
+    var nx = lm[1].x;
+    var ny = lm[1].y;
+    currentFeature = { h: h, v: v, nx: nx, ny: ny };
+ 
+    if (calibrated && regX && regY) {
+      var f = [1, h, v, nx, ny];
+      var px = dotProd(f, regX);
+      var py = dotProd(f, regY);
+      px = Math.max(0, Math.min(window.innerWidth, px));
+      py = Math.max(0, Math.min(window.innerHeight, py));
+      gazeDot.style.left = px + 'px';
+      gazeDot.style.top = py + 'px';
+      var cell = cellAtPoint(px, py);
       if (cell) {
         updateDwell(cell);
       } else {
@@ -607,21 +675,31 @@
  
   function startCalibration() {
     calEl.style.display = 'block';
-    gazeDot.style.display = 'block';
-    setStatus('Kalibracija: klikni na svaku tačku dok osoba gleda pravo u nju.');
+    calEl.innerHTML = '';
+    calEl.appendChild(document.getElementById('calInfo'));
+    setStatus('Kalibracija: neka osoba gleda pravo u tačku par sekundi, zatim klikni na nju.');
     calDots = [];
     calDoneCount = 0;
+    calSamples = [];
     var margins = [0.08, 0.5, 0.92];
     margins.forEach(function (fy) {
       margins.forEach(function (fx) {
         var dot = document.createElement('div');
         dot.className = 'cal-dot';
-        dot.style.left = (fx * 100) + 'vw';
-        dot.style.top = (fy * 100) + 'vh';
+        var px = fx * window.innerWidth;
+        var py = fy * window.innerHeight;
+        dot.style.left = px + 'px';
+        dot.style.top = py + 'px';
         dot.addEventListener('click', function () {
           if (dot.classList.contains('done')) return;
+          if (!currentFeature) {
+            setStatus('Lice nije prepoznato — proveri osvetljenje i da je lice okrenuto ka kameri.', true);
+            return;
+          }
+          calSamples.push({ feature: currentFeature, x: px, y: py });
           dot.classList.add('done');
           calDoneCount++;
+          setStatus('Kalibracija: ' + calDoneCount + ' / ' + calDots.length);
           if (calDoneCount >= calDots.length) finishCalibration();
         });
         calEl.appendChild(dot);
@@ -631,10 +709,13 @@
   }
  
   function finishCalibration() {
+    var feats = calSamples.map(function (s) { return [1, s.feature.h, s.feature.v, s.feature.nx, s.feature.ny]; });
+    var xs = calSamples.map(function (s) { return s.x; });
+    var ys = calSamples.map(function (s) { return s.y; });
+    regX = leastSquares(feats, xs);
+    regY = leastSquares(feats, ys);
     calibrated = true;
     calEl.style.display = 'none';
-    calEl.innerHTML = '';
-    calEl.appendChild(document.getElementById('calInfo'));
     boardEl.style.display = 'flex';
     setStatus('Spremno. Gledaj u reč nekoliko sekundi da je izabereš.');
     buildHome();
@@ -642,12 +723,52 @@
  
   recalBtn.addEventListener('click', function () {
     boardEl.style.display = 'none';
+    calibrated = false;
     startCalibration();
   });
  
-  // Also allow using the board with mouse/touch only (no camera), for testing
+  // ---------- small least-squares solver (normal equations + ridge) ----------
+  function leastSquares(X, y) {
+    var n = X[0].length;
+    var ATA = [];
+    var ATy = [];
+    var i, j, r;
+    for (i = 0; i < n; i++) { ATA.push(new Array(n).fill(0)); ATy.push(0); }
+    for (r = 0; r < X.length; r++) {
+      for (i = 0; i < n; i++) {
+        ATy[i] += X[r][i] * y[r];
+        for (j = 0; j < n; j++) ATA[i][j] += X[r][i] * X[r][j];
+      }
+    }
+    for (i = 0; i < n; i++) ATA[i][i] += 1e-3;
+    return gaussSolve(ATA, ATy);
+  }
+ 
+  function gaussSolve(A, b) {
+    var n = b.length;
+    var M = A.map(function (row, i) { return row.concat([b[i]]); });
+    var col, r, c;
+    for (col = 0; col < n; col++) {
+      var pivot = col;
+      for (r = col + 1; r < n; r++) {
+        if (Math.abs(M[r][col]) > Math.abs(M[pivot][col])) pivot = r;
+      }
+      var tmp = M[col]; M[col] = M[pivot]; M[pivot] = tmp;
+      var pv = M[col][col];
+      if (Math.abs(pv) < 1e-10) pv = 1e-10;
+      for (c = col; c <= n; c++) M[col][c] /= pv;
+      for (r = 0; r < n; r++) {
+        if (r === col) continue;
+        var f = M[r][col];
+        for (c = col; c <= n; c++) M[r][c] -= f * M[col][c];
+      }
+    }
+    return M.map(function (row) { return row[n]; });
+  }
+ 
   setStatus('Spremno za pokretanje.');
 })();
 </script>
 </body>
 </html>
+ 
