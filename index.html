@@ -530,6 +530,7 @@
   var regY = null;
   var videoEl = null;
   var faceMesh = null;
+  var calInfoEl = document.getElementById('calInfo');
  
   document.getElementById('startCam').addEventListener('click', function () {
     setStatus('Tražim pristup kameri...');
@@ -674,7 +675,7 @@
   function startCalibration() {
     calEl.style.display = 'block';
     calEl.innerHTML = '';
-    calEl.appendChild(document.getElementById('calInfo'));
+    calEl.appendChild(calInfoEl);
     setStatus('Kalibracija: neka osoba gleda pravo u tačku par sekundi, zatim klikni na nju.');
     calDots = [];
     calDoneCount = 0;
@@ -769,3 +770,4 @@
 </script>
 </body>
 </html>
+ 
