@@ -4,7 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Pogled govori — komunikacija pogledom</title>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/face_mesh.js" crossorigin="anonymous"></script>
+<script type="module">
+  import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+  window.__mp = { FaceLandmarker: FaceLandmarker, FilesetResolver: FilesetResolver };
+  window.dispatchEvent(new Event('mp-ready'));
+</script>
 <style>
   :root {
     --ink: #1c2b2b;
@@ -529,7 +533,7 @@
   var regX = null;
   var regY = null;
   var videoEl = null;
-  var faceMesh = null;
+  var faceLandmarker = null;
   var calInfoEl = document.getElementById('calInfo');
  
   document.getElementById('startCam').addEventListener('click', function () {
@@ -574,36 +578,45 @@
       });
   });
  
+  function waitForMp() {
+    if (window.__mp) return Promise.resolve();
+    return new Promise(function (resolve) {
+      window.addEventListener('mp-ready', function () { resolve(); }, { once: true });
+    });
+  }
+ 
   function startFaceMesh() {
-    setStatus('Učitavam model za prepoznavanje lica...');
-    if (typeof FaceMesh === 'undefined') {
-      setStatus('Nije uspelo učitavanje biblioteke za prepoznavanje lica (proveri internet konekciju) i osveži stranicu.', true);
-      log('window.FaceMesh je undefined.');
-      return;
-    }
-    try {
-      faceMesh = new FaceMesh({
-        locateFile: function (file) {
-          return 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/' + file;
-        }
+    setStatus('Učitavam model za prepoznavanje lica (može potrajati prvi put)...');
+    waitForMp()
+      .then(function () {
+        return window.__mp.FilesetResolver.forVisionTasks(
+          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
+        );
+      })
+      .then(function (vision) {
+        return window.__mp.FaceLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+            delegate: 'CPU'
+          },
+          runningMode: 'VIDEO',
+          numFaces: 1,
+          outputFaceBlendshapes: false,
+          outputFacialTransformationMatrixes: false
+        });
+      })
+      .then(function (fl) {
+        faceLandmarker = fl;
+        camReady = true;
+        setupEl.style.display = 'none';
+        gazeDot.style.display = 'block';
+        startCalibration();
+        frameLoop();
+      })
+      .catch(function (e) {
+        log('Greška pri učitavanju modela: ' + (e && e.message));
+        setStatus('Greška pri učitavanju modela za prepoznavanje lica: ' + (e && e.message ? e.message : 'nepoznata greška') + '. Proveri internet konekciju i osveži stranicu.', true);
       });
-      faceMesh.setOptions({
-        maxNumFaces: 1,
-        refineLandmarks: true,
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5
-      });
-      faceMesh.onResults(onFaceResults);
-    } catch (e) {
-      log('Greška pri pokretanju FaceMesh: ' + e.message);
-      setStatus('Greška pri pokretanju prepoznavanja lica.', true);
-      return;
-    }
-    camReady = true;
-    setupEl.style.display = 'none';
-    gazeDot.style.display = 'block';
-    startCalibration();
-    frameLoop();
   }
  
   var frameLoopRunning = false;
@@ -611,10 +624,13 @@
     if (frameLoopRunning) return;
     frameLoopRunning = true;
     function step() {
-      if (videoEl && videoEl.readyState >= 2) {
-        faceMesh.send({ image: videoEl }).catch(function (e) {
-          log('FaceMesh greška: ' + e.message);
-        });
+      if (videoEl && videoEl.readyState >= 2 && faceLandmarker) {
+        try {
+          var result = faceLandmarker.detectForVideo(videoEl, performance.now());
+          onFaceResults(result);
+        } catch (e) {
+          log('detectForVideo greška: ' + e.message);
+        }
       }
       requestAnimationFrame(step);
     }
@@ -642,11 +658,11 @@
   }
  
   function onFaceResults(results) {
-    if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
+    if (!results.faceLandmarks || results.faceLandmarks.length === 0) {
       currentFeature = null;
       return;
     }
-    var lm = results.multiFaceLandmarks[0];
+    var lm = results.faceLandmarks[0];
     var e1 = eyeRatio(lm, 468, 133, 33, 159, 145);
     var e2 = eyeRatio(lm, 473, 362, 263, 386, 374);
     var h = (e1.h + e2.h) / 2;
@@ -770,4 +786,3 @@
 </script>
 </body>
 </html>
- 
