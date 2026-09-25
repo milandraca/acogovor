@@ -378,17 +378,21 @@
     {t: 'BOL', type: 'word'},
     {t: 'POMOĆ', type: 'word'},
     {t: 'ŽEDAN/ŽEDNA SAM', type: 'word'},
+    {t: 'NE MOGU DA DIŠEM', type: 'word'},
+    {t: 'VIŠE REČI', type: 'more'},
+    {t: 'SLOVA', type: 'letters'}
+  ];
+  var MORE = [
+    {t: '← NAZAD', type: 'back'},
     {t: 'GLADAN/GLADNA SAM', type: 'word'},
     {t: 'UMORAN/UMORNA SAM', type: 'word'},
     {t: 'PREVIŠE TOPLO', type: 'word'},
     {t: 'PREVIŠE HLADNO', type: 'word'},
     {t: 'NAMESTI ME', type: 'word'},
     {t: 'SVRAB', type: 'word'},
-    {t: 'NE MOGU DA DIŠEM', type: 'word'},
     {t: 'VOLIM TE', type: 'word'},
     {t: 'HVALA', type: 'word'},
-    {t: 'SAČEKAJ', type: 'word'},
-    {t: 'SLOVA', type: 'letters'}
+    {t: 'SAČEKAJ', type: 'word'}
   ];
   var LETTERS = 'ABCČĆDĐEFGHIJKLMNOPRSŠTUVZŽ'.split('');
  
@@ -402,10 +406,26 @@
       gridEl.appendChild(makeCell(item.t, function () {
         if (item.type === 'letters') {
           buildLetters();
+        } else if (item.type === 'more') {
+          buildMore();
         } else {
           appendWord(item.t);
         }
       }));
+    });
+  }
+ 
+  function buildMore() {
+    currentView = 'more';
+    gridEl.innerHTML = '';
+    MORE.forEach(function (item) {
+      gridEl.appendChild(makeCell(item.t, function () {
+        if (item.type === 'back') {
+          buildHome();
+        } else {
+          appendWord(item.t);
+        }
+      }, item.type === 'back'));
     });
   }
  
@@ -676,7 +696,7 @@
     currentFeature = { h: h, v: v, nx: nx, ny: ny };
  
     if (calibrated && regX && regY) {
-      var f = [1, h, v, nx, ny];
+      var f = [1, h, v, nx, ny, h * h, v * v, h * v];
       var px = dotProd(f, regX);
       var py = dotProd(f, regY);
       px = Math.max(0, Math.min(window.innerWidth, px));
@@ -710,9 +730,10 @@
     calSamples = [];
     smoothPx = null;
     smoothPy = null;
-    var margins = [0.08, 0.5, 0.92];
-    margins.forEach(function (fy) {
-      margins.forEach(function (fx) {
+    var marginsX = [0.06, 0.37, 0.63, 0.94];
+    var marginsY = [0.1, 0.5, 0.9];
+    marginsY.forEach(function (fy) {
+      marginsX.forEach(function (fx) {
         var dot = document.createElement('div');
         dot.className = 'cal-dot';
         var px = fx * window.innerWidth;
@@ -757,7 +778,10 @@
   }
  
   function finishCalibration() {
-    var feats = calSamples.map(function (s) { return [1, s.feature.h, s.feature.v, s.feature.nx, s.feature.ny]; });
+    var feats = calSamples.map(function (s) {
+      var h = s.feature.h, v = s.feature.v;
+      return [1, h, v, s.feature.nx, s.feature.ny, h * h, v * v, h * v];
+    });
     var xs = calSamples.map(function (s) { return s.x; });
     var ys = calSamples.map(function (s) { return s.y; });
     regX = leastSquares(feats, xs);
@@ -819,4 +843,3 @@
 </script>
 </body>
 </html>
- 
