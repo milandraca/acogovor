@@ -544,12 +544,10 @@
     navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
       .then(function (stream) {
         log('Kamera je dostupna, pristup odobren.');
-        videoEl = document.createElement('video');
+        videoEl = document.getElementById('camPreview');
         videoEl.setAttribute('playsinline', '');
         videoEl.setAttribute('autoplay', '');
         videoEl.muted = true;
-        videoEl.style.display = 'none';
-        document.body.appendChild(videoEl);
         videoEl.srcObject = stream;
         return videoEl.play();
       })
@@ -771,4 +769,3 @@
 </script>
 </body>
 </html>
- 
