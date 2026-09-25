@@ -174,7 +174,7 @@
   }
  
   /* --- Calibration --- */
-  #calibration { position: absolute; inset: 0; display: none; }
+  #calibration { position: fixed; inset: 0; display: none; z-index: 500; background: var(--paper); }
   .cal-dot {
     position: absolute;
     width: 26px; height: 26px;
@@ -186,6 +186,8 @@
     box-shadow: 0 0 0 4px var(--accent-soft);
   }
   .cal-dot.done { background: var(--accent); }
+  .cal-dot.collecting { background: var(--accent); animation: pulse 0.5s ease-in-out infinite alternate; }
+  @keyframes pulse { from { transform: translate(-50%, -50%) scale(1); } to { transform: translate(-50%, -50%) scale(1.3); } }
   #calInfo {
     position: absolute;
     top: 10px; left: 50%; transform: translateX(-50%);
@@ -532,6 +534,8 @@
   var currentFeature = null;
   var regX = null;
   var regY = null;
+  var smoothPx = null;
+  var smoothPy = null;
   var videoEl = null;
   var faceLandmarker = null;
   var calInfoEl = document.getElementById('calInfo');
@@ -677,6 +681,14 @@
       var py = dotProd(f, regY);
       px = Math.max(0, Math.min(window.innerWidth, px));
       py = Math.max(0, Math.min(window.innerHeight, py));
+      var alpha = 0.18;
+      if (smoothPx === null) { smoothPx = px; smoothPy = py; }
+      else {
+        smoothPx = smoothPx + alpha * (px - smoothPx);
+        smoothPy = smoothPy + alpha * (py - smoothPy);
+      }
+      px = smoothPx;
+      py = smoothPy;
       gazeDot.style.left = px + 'px';
       gazeDot.style.top = py + 'px';
       var cell = cellAtPoint(px, py);
@@ -696,6 +708,8 @@
     calDots = [];
     calDoneCount = 0;
     calSamples = [];
+    smoothPx = null;
+    smoothPy = null;
     var margins = [0.08, 0.5, 0.92];
     margins.forEach(function (fy) {
       margins.forEach(function (fx) {
@@ -706,16 +720,35 @@
         dot.style.left = px + 'px';
         dot.style.top = py + 'px';
         dot.addEventListener('click', function () {
-          if (dot.classList.contains('done')) return;
+          if (dot.classList.contains('done') || dot.classList.contains('collecting')) return;
           if (!currentFeature) {
             setStatus('Lice nije prepoznato — proveri osvetljenje i da je lice okrenuto ka kameri.', true);
             return;
           }
-          calSamples.push({ feature: currentFeature, x: px, y: py });
-          dot.classList.add('done');
-          calDoneCount++;
-          setStatus('Kalibracija: ' + calDoneCount + ' / ' + calDots.length);
-          if (calDoneCount >= calDots.length) finishCalibration();
+          dot.classList.add('collecting');
+          setStatus('Zadrži pogled na tački...');
+          var buf = [];
+          var t0 = performance.now();
+          function collect() {
+            if (currentFeature) buf.push(currentFeature);
+            if (performance.now() - t0 < 500) {
+              requestAnimationFrame(collect);
+            } else {
+              var avg = { h: 0, v: 0, nx: 0, ny: 0 };
+              buf.forEach(function (s) {
+                avg.h += s.h; avg.v += s.v; avg.nx += s.nx; avg.ny += s.ny;
+              });
+              var n = buf.length || 1;
+              avg.h /= n; avg.v /= n; avg.nx /= n; avg.ny /= n;
+              calSamples.push({ feature: avg, x: px, y: py });
+              dot.classList.remove('collecting');
+              dot.classList.add('done');
+              calDoneCount++;
+              setStatus('Kalibracija: ' + calDoneCount + ' / ' + calDots.length);
+              if (calDoneCount >= calDots.length) finishCalibration();
+            }
+          }
+          collect();
         });
         calEl.appendChild(dot);
         calDots.push(dot);
@@ -786,3 +819,4 @@
 </script>
 </body>
 </html>
+ 
