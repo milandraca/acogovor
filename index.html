@@ -255,6 +255,11 @@
     box-shadow: 0 0 0 3px var(--accent-soft);
   }
   .cell .label { position: relative; z-index: 1; }
+  .cell.scan-active {
+    border-color: var(--ring);
+    box-shadow: 0 0 0 4px var(--ring);
+    background: var(--accent-soft);
+  }
  
   #gazeDot {
     position: fixed;
@@ -320,6 +325,15 @@
       <div class="row">
         <button class="primary" id="startCam">Uključi kameru</button>
       </div>
+    </div>
+ 
+    <div id="modeChoice" class="panel" style="display:none;">
+      <p><strong>Kamera je spremna.</strong> Izaberi način unosa:</p>
+      <div class="row">
+        <button class="primary" id="chooseGaze">Praćenje pogleda (uz kalibraciju)</button>
+        <button class="secondary" id="chooseScan">Skeniranje + trepćenje (bez kalibracije)</button>
+      </div>
+      <p style="color:var(--ink-soft); font-size:0.85rem; margin-top:14px;">Skeniranje: reči se same smenjuju, a dug trepćaj (pola sekunde) bira trenutno označenu reč. Korisno ako je praćenje pogleda previše nestabilno.</p>
     </div>
  
     <div id="calibration">
@@ -400,7 +414,7 @@
  
   function buildHome() {
     currentView = 'home';
-    recalBtn.style.display = 'inline-block';
+    recalBtn.style.display = (inputMode === 'gaze') ? 'inline-block' : 'none';
     gridEl.innerHTML = '';
     HOME.forEach(function (item) {
       gridEl.appendChild(makeCell(item.t, function () {
@@ -413,6 +427,7 @@
         }
       }));
     });
+    if (inputMode === 'scan') startScanning();
   }
  
   function buildMore() {
@@ -427,6 +442,7 @@
         }
       }, item.type === 'back'));
     });
+    if (inputMode === 'scan') startScanning();
   }
  
   function buildLetters() {
@@ -438,6 +454,7 @@
     LETTERS.forEach(function (ch) {
       gridEl.appendChild(makeCell(ch, function () { appendChar(ch); }));
     });
+    if (inputMode === 'scan') startScanning();
   }
  
   function appendWord(w) {
@@ -537,12 +554,24 @@
  
   // ---------- Speed controls ----------
   document.getElementById('dwellUp').addEventListener('click', function () {
-    DWELL_MS = Math.max(500, DWELL_MS - 200);
-    setStatus('Vreme zadržavanja: ' + (DWELL_MS / 1000).toFixed(1) + ' s');
+    if (inputMode === 'scan') {
+      SCAN_MS = Math.max(400, SCAN_MS - 150);
+      setStatus('Brzina skeniranja: ' + (SCAN_MS / 1000).toFixed(1) + ' s po polju');
+      if (scanTimer) startScanning();
+    } else {
+      DWELL_MS = Math.max(500, DWELL_MS - 200);
+      setStatus('Vreme zadržavanja: ' + (DWELL_MS / 1000).toFixed(1) + ' s');
+    }
   });
   document.getElementById('dwellDown').addEventListener('click', function () {
-    DWELL_MS = Math.min(4000, DWELL_MS + 200);
-    setStatus('Vreme zadržavanja: ' + (DWELL_MS / 1000).toFixed(1) + ' s');
+    if (inputMode === 'scan') {
+      SCAN_MS = Math.min(3000, SCAN_MS + 150);
+      setStatus('Brzina skeniranja: ' + (SCAN_MS / 1000).toFixed(1) + ' s po polju');
+      if (scanTimer) startScanning();
+    } else {
+      DWELL_MS = Math.min(4000, DWELL_MS + 200);
+      setStatus('Vreme zadržavanja: ' + (DWELL_MS / 1000).toFixed(1) + ' s');
+    }
   });
  
   // ---------- Face Mesh (MediaPipe) gaze tracking ----------
@@ -556,6 +585,83 @@
   var regY = null;
   var smoothPx = null;
   var smoothPy = null;
+  var inputMode = 'gaze'; // 'gaze' or 'scan'
+  var eyesClosedSince = null;
+  var lastTriggerTime = 0;
+  var EAR_CLOSED = 0.16;
+  var BLINK_HOLD_MS = 500;
+  var BLINK_COOLDOWN_MS = 700;
+  var scanTimer = null;
+  var scanIndex = -1;
+  var scanCells = [];
+  var SCAN_MS = 1100;
+ 
+  document.getElementById('chooseGaze').addEventListener('click', function () {
+    inputMode = 'gaze';
+    document.getElementById('modeChoice').style.display = 'none';
+    gazeDot.style.display = 'block';
+    startCalibration();
+  });
+  document.getElementById('chooseScan').addEventListener('click', function () {
+    inputMode = 'scan';
+    document.getElementById('modeChoice').style.display = 'none';
+    boardEl.style.display = 'flex';
+    setStatus('Skeniranje: sačekaj da se označi željena reč, pa trepni i zadrži pola sekunde.');
+    buildHome();
+  });
+ 
+  function landmarkDist(lm, i, j) {
+    var dx = lm[i].x - lm[j].x, dy = lm[i].y - lm[j].y;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+  function computeEAR(lm) {
+    var leftW = landmarkDist(lm, 33, 133);
+    var leftH = landmarkDist(lm, 159, 145);
+    var rightW = landmarkDist(lm, 263, 362);
+    var rightH = landmarkDist(lm, 386, 374);
+    var leftEAR = leftW ? leftH / leftW : 0.3;
+    var rightEAR = rightW ? rightH / rightW : 0.3;
+    return (leftEAR + rightEAR) / 2;
+  }
+  function updateBlinkSwitch(ear) {
+    var now = performance.now();
+    if (ear < EAR_CLOSED) {
+      if (eyesClosedSince === null) eyesClosedSince = now;
+      if (now - eyesClosedSince >= BLINK_HOLD_MS && now - lastTriggerTime > BLINK_COOLDOWN_MS) {
+        lastTriggerTime = now;
+        eyesClosedSince = null;
+        if (inputMode === 'scan') onSwitchTrigger();
+      }
+    } else {
+      eyesClosedSince = null;
+    }
+  }
+ 
+  function startScanning() {
+    stopScanning();
+    scanCells = Array.prototype.slice.call(gridEl.children);
+    if (scanCells.length === 0) return;
+    scanIndex = -1;
+    advanceScan();
+    scanTimer = setInterval(advanceScan, SCAN_MS);
+  }
+  function stopScanning() {
+    if (scanTimer) clearInterval(scanTimer);
+    scanTimer = null;
+    scanCells.forEach(function (c) { c.classList.remove('scan-active'); });
+  }
+  function advanceScan() {
+    scanCells.forEach(function (c) { c.classList.remove('scan-active'); });
+    scanIndex = (scanIndex + 1) % scanCells.length;
+    scanCells[scanIndex].classList.add('scan-active');
+  }
+  function onSwitchTrigger() {
+    if (scanIndex >= 0 && scanCells[scanIndex]) {
+      var cell = scanCells[scanIndex];
+      if (navigator.vibrate) navigator.vibrate(60);
+      triggerSelect(cell);
+    }
+  }
   var videoEl = null;
   var faceLandmarker = null;
   var calInfoEl = document.getElementById('calInfo');
@@ -633,8 +739,8 @@
         faceLandmarker = fl;
         camReady = true;
         setupEl.style.display = 'none';
-        gazeDot.style.display = 'block';
-        startCalibration();
+        document.getElementById('modeChoice').style.display = 'block';
+        setStatus('Kamera i model spremni.');
         frameLoop();
       })
       .catch(function (e) {
@@ -694,6 +800,7 @@
     var nx = lm[1].x;
     var ny = lm[1].y;
     currentFeature = { h: h, v: v, nx: nx, ny: ny };
+    updateBlinkSwitch(computeEAR(lm));
  
     if (calibrated && regX && regY) {
       var f = [1, h, v, nx, ny, h * h, v * v, h * v];
