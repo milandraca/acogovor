@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Pogled govori — komunikacija pogledom</title>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/face_mesh.js" crossorigin="anonymous"></script>
 <style>
   :root {
     --ink: #1c2b2b;
@@ -584,7 +584,7 @@
     try {
       faceMesh = new FaceMesh({
         locateFile: function (file) {
-          return 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/' + file;
+          return 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/' + file;
         }
       });
       faceMesh.setOptions({
